@@ -33,6 +33,7 @@ FILE_EXTENSION = '.ecc'
 
 FLAG_PARANOID = 0x01   # Double-curve mode: X25519 + P-521
 FLAG_SIGNED   = 0x02   # Ed25519 signature appended
+FLAG_STEG     = 0x04   # Payload was steganographically embedded in a carrier image
 
 # Sizes (bytes)
 SALT_SIZE             = 32
@@ -66,6 +67,7 @@ class ECCFileHeader:
     salt: bytes = b'\x00' * SALT_SIZE
     iv: bytes = b'\x00' * AES_IV_SIZE
     recipients: List[RecipientBlock] = field(default_factory=list)
+    steg_carrier_hint: str = ''  # Basename of carrier image (if FLAG_STEG)
 
     @property
     def is_paranoid(self) -> bool:
@@ -74,6 +76,10 @@ class ECCFileHeader:
     @property
     def is_signed(self) -> bool:
         return bool(self.flags & FLAG_SIGNED)
+
+    @property
+    def is_steg(self) -> bool:
+        return bool(self.flags & FLAG_STEG)
 
 
 # ── Serialisation helpers ──────────────────────────────────────────────────────
@@ -92,6 +98,13 @@ def pack_header(header: ECCFileHeader) -> bytes:
     fn_len = len(fn_bytes)
     num_rec = len(header.recipients)
 
+    # Optional steg carrier hint (max 255 bytes, only when FLAG_STEG set)
+    hint_bytes = b''
+    hint_len   = 0
+    if header.is_steg and header.steg_carrier_hint:
+        hint_bytes = header.steg_carrier_hint.encode('utf-8')[:255]
+        hint_len   = len(hint_bytes)
+
     parts: List[bytes] = [
         MAGIC,
         struct.pack('<BBBH', header.version, header.flags, num_rec, fn_len),
@@ -107,6 +120,12 @@ def pack_header(header: ECCFileHeader) -> bytes:
                 raise ValueError('Paranoid mode requires ephemeral_p521_pub in each RecipientBlock.')
             parts.append(rec.ephemeral_p521_pub)
         parts.append(rec.encrypted_session_key)
+
+    # Append steg hint (1 byte length + hint bytes)
+    if header.is_steg:
+        parts.append(struct.pack('<B', hint_len))
+        if hint_len:
+            parts.append(hint_bytes)
 
     return b''.join(parts)
 
@@ -138,6 +157,7 @@ def unpack_header(data: bytes) -> tuple[ECCFileHeader, int]:
     iv   = data[offset:offset + AES_IV_SIZE];     offset += AES_IV_SIZE
 
     paranoid = bool(flags & FLAG_PARANOID)
+    is_steg  = bool(flags & FLAG_STEG)
     recipients: List[RecipientBlock] = []
 
     for _ in range(num_rec):
@@ -150,6 +170,14 @@ def unpack_header(data: bytes) -> tuple[ECCFileHeader, int]:
         enc_sk = data[offset:offset + ENC_SESSION_KEY_SIZE];  offset += ENC_SESSION_KEY_SIZE
         recipients.append(RecipientBlock(x25519_pub, enc_sk, p521_pub))
 
+    # Optional steg carrier hint
+    steg_carrier_hint = ''
+    if is_steg:
+        hint_len = struct.unpack_from('<B', data, offset)[0]; offset += 1
+        if hint_len:
+            steg_carrier_hint = data[offset:offset + hint_len].decode('utf-8', errors='replace')
+            offset += hint_len
+
     header = ECCFileHeader(
         version=version,
         flags=flags,
@@ -157,5 +185,6 @@ def unpack_header(data: bytes) -> tuple[ECCFileHeader, int]:
         salt=salt,
         iv=iv,
         recipients=recipients,
+        steg_carrier_hint=steg_carrier_hint,
     )
     return header, offset

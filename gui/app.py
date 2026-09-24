@@ -15,6 +15,7 @@ from .key_panel     import KeyPanel
 from .encrypt_panel import EncryptPanel
 from .decrypt_panel import DecryptPanel
 from .history_panel import HistoryPanel
+from .steg_panel    import StegPanel
 from crypto.key_manager import KeyManager
 from utils.logger import OperationLogger
 
@@ -106,6 +107,7 @@ class App(ctk.CTk):
             ('decrypt',  '🔓  Deszyfrowanie'),
             ('keys',     '🔑  Klucze'),
             ('history',  '📋  Historia'),
+            ('steg',     '🕵️  Steganografia'),
         ]
         for row_idx, (key, label) in enumerate(nav_items, start=2):
             btn = ctk.CTkButton(
@@ -142,6 +144,7 @@ class App(ctk.CTk):
             'decrypt': DecryptPanel(self.content, self.key_manager, self.logger, self._on_status),
             'keys':    KeyPanel(self.content, self.key_manager, self.logger, self._on_status),
             'history': HistoryPanel(self.content, self.logger),
+            'steg':    StegPanel(self.content, self.logger, self._on_status),
         }
         for panel in self._panels.values():
             panel.grid(row=0, column=0, sticky='nsew')

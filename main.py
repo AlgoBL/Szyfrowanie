@@ -25,6 +25,14 @@ def _check_deps() -> None:
         import argon2
     except ImportError:
         missing.append('argon2-cffi')
+    try:
+        import numpy
+    except ImportError:
+        missing.append('numpy')
+    try:
+        import PIL
+    except ImportError:
+        missing.append('Pillow')
 
     if missing:
         print('=' * 60)
